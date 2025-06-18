@@ -1,8 +1,9 @@
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 import joblib
+from tqdm import tqdm
 
-# 💡 Paste your extract_features() function here
+# 💡 Feature extraction logic
 def extract_features(url):
     url_length = len(url)
     num_digits = sum(c.isdigit() for c in url)
@@ -28,41 +29,31 @@ def extract_features(url):
         "has_https": has_https,
     }
 
-    columns_order = [
-        "url_length",
-        "num_digits",
-        "num_special_chars",
-        "num_subdomains",
-        "count_at",
-        "count_com",
-        "count_hyphen",
-        "count_net",
-        "count_www",
-        "has_https"
-    ]
+    return pd.DataFrame([features])
 
-    return pd.DataFrame([features])[columns_order]
+# 📁 Load dataset
+print("📁 Loading dataset...")
+df = pd.read_csv("dataset/new_data_urls.csv")
 
-# ✅ Sample training data
-data = [
-    {"url": "https://secure-login.com", "label": 0},
-    {"url": "http://192.168.0.1", "label": 1},
-    {"url": "https://www.paypal.com", "label": 0},
-    {"url": "http://malicious-login.net", "label": 1},
-    {"url": "https://accounts.google.com", "label": 0},
-    {"url": "http://verify-now.xyz@phish.com", "label": 1},
-]
-df = pd.DataFrame(data)
+# 🏷️ Use 'status' column as label (0: legitimate, 1: phishing)
+print("🔧 Mapping labels...")
+df = df[df["status"].isin([0, 1])]  # Filter only known status values
+df["label"] = df["status"]
 
-# ✅ Extract features for training
-features = [extract_features(url).iloc[0] for url in df["url"]]
+# 🔍 Show label balance
+print("\n📊 Label counts:\n", df["label"].value_counts())
+
+# ✅ Extract features from URLs
+print("🔄 Extracting features from URLs...")
+features = [extract_features(url).iloc[0] for url in tqdm(df["url"])]
 X = pd.DataFrame(features)
 y = df["label"]
 
-# ✅ Train model
-model = RandomForestClassifier()
+# 🧠 Train Random Forest model
+print("🧠 Training RandomForest model...")
+model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1, verbose=1)
 model.fit(X, y)
 
-# ✅ Save model
+# 💾 Save model
 joblib.dump(model, "phishing_model.pkl")
-print("✅ Model retrained and saved as phishing_model.pkl")
+print("✅ Model trained and saved as phishing_model.pkl")
