@@ -13,50 +13,70 @@ from urllib.parse import urlparse
 app = Flask(__name__)
 
 # 📦 Model info
-MODEL_PATH = "phishing_model.pkl"   
+MODEL_PATH = "phishing_model.pkl"
 SCALER_PATH = "scaler.pkl"
 MODEL_ID = "1G_wI_-aYjT9bvGYW7WweE7r8raaCSCux"  # Google Drive ID for model
-SCALER_ID = "1LOVJCAdwsVrpRzhNvtjJVOwkP9wHQVj5"  # Google Drive ID for scaler  
+SCALER_ID = "1LOVJCAdwsVrpRzhNvtjJVOwkP9wHQVj5"  # Google Drive ID for scaler
 
-# ✨ Define the PHISHING_THRESHOLD here - Adjusted to 0.6
-# This value determines the probability cutoff for classifying a URL as phishing.
+# ✨ Define the PHISHING_THRESHOLD here
 PHISHING_THRESHOLD = 0.6 # Increased threshold to reduce false positives
 
+# Global session for connection pooling
+session = requests.Session()
 
-# --- New unshorten_url function ---
 def unshorten_url(url):
     """
-    Attempts to unshorten a URL. Returns the unshortened URL or the original URL if unshortening fails
-    or if it's not a shortened URL. Also handles basic invalid URLs gracefully.
+    Attempts to unshorten a URL using requests.Session for better connection management.
+    Returns the unshortened URL or the original URL if unshortening fails
+    or if it's not a recognized shortened URL.
     """
     if not isinstance(url, str) or not url.strip():
         return ""
 
     if not validators.url(url):
+        print(f"DEBUG: unshorten_url - Invalid URL format: '{url}'")
         return url
 
-    known_shorteners = [
+    known_shorteners_domains = [
         'bit.ly', 'goo.gl', 'tinyurl.com', 'ow.ly', 't.co', 'shorte.st',
         'cutt.ly', 'is.gd', 'rebrand.ly', 'clck.ru', 'rb.gy'
     ]
 
-    if not any(shortener in url.lower() for shortener in known_shorteners):
+    parsed_input_url = urlparse(url)
+    input_domain = parsed_input_url.netloc.lower()
+
+    is_original_from_shortener = any(shortener in input_domain for shortener in known_shorteners_domains)
+
+    # Only attempt unshortening if it looks like a shortened URL
+    if not is_original_from_shortener:
+        print(f"DEBUG: unshorten_url - Not a known shortened URL: '{url}'. Returning original.")
         return url
 
+    print(f"DEBUG: unshorten_url - Attempting to resolve: {url}")
     try:
-        response = requests.head(url, allow_redirects=True, timeout=5)
-        final_url_after_redirect = response.url
+        # Use the global session
+        response = session.get(url, allow_redirects=True, timeout=5)
+        final_url_from_response = response.url
 
-        if final_url_after_redirect and validators.url(final_url_after_redirect):
-            return final_url_after_redirect
+        print(f"DEBUG: unshorten_url - Response status code: {response.status_code}")
+        print(f"DEBUG: unshorten_url - Redirect history: {response.history}")
+        print(f"DEBUG: unshorten_url - Final URL from requests: {final_url_from_response}")
+
+        # Check if the final URL is different from the original and is valid
+        if final_url_from_response != url and validators.url(final_url_from_response):
+            print(f"DEBUG: unshorten_url - Successfully resolved to: {final_url_from_response}")
+            return final_url_from_response
         else:
+            # If no effective redirect occurred, or final URL is invalid, return the original
+            print(f"DEBUG: unshorten_url - No effective unshortening for '{url}'. Returning original.")
             return url
 
     except (ConnectionError, Timeout, RequestException) as e:
-        print(f"Error unshortening URL '{url}': {e}")
+        print(f"ERROR: unshorten_url - Network/Request error for '{url}': {e}")
         return url
     except Exception as e:
-        print(f"An unexpected error occurred during unshortening for '{url}': {e}")
+        print(f"ERROR: unshorten_url - Unexpected error for '{url}': {e}")
+        traceback.print_exc() # Print full traceback for unexpected errors
         return url
 
 
@@ -97,11 +117,13 @@ except Exception as e:
 
 @app.route("/", methods=["GET"])
 def home():
+    # Pass an empty string for both original_input_url and final_display_url on initial load
     return render_template("index.html",
                            result=None,
                            description=None,
                            reasons=None,
-                           url="")
+                           original_input_url="", # Now correctly passed
+                           final_display_url="") # Now correctly passed
 
 
 @app.route("/analyze", methods=["POST"])
@@ -113,9 +135,14 @@ def analyze():
                                result="⚠️ No URL Provided",
                                description="Please enter a URL to analyze.",
                                reasons="",
-                               url="")
+                               original_input_url="", # Correctly pass original for empty input
+                               final_display_url="") # Correctly pass empty for empty input
 
-    # Updated TRUSTED_DOMAINS list (docs.python.org and python.org removed for testing)
+    # Step 1: Unshorten the URL
+    final_display_url = unshorten_url(user_input_url)
+    actual_url_for_analysis = final_display_url
+
+    # Extended TRUSTED_DOMAINS list
     TRUSTED_DOMAINS = [
         "www.nasa.gov", "nasa.gov",
         "www.google.com", "google.com",
@@ -131,13 +158,25 @@ def analyze():
         "www.github.com", "github.com",
         "www.linkedin.com", "linkedin.com",
         "www.openai.com", "openai.com",
-        "www.stackoverflow.com", "stackoverflow.com"
-        # "docs.python.org", "python.org" <-- REMOVED for testing model directly
+        "www.stackoverflow.com", "stackoverflow.com",
+        "chatgpt.com",
+        "www.facebook.com", "facebook.com",
+        "www.twitter.com", "twitter.com", "x.com",
+        "www.youtube.com", "youtube.com",
+        "www.reddit.com", "reddit.com",
+        "www.instagram.com", "instagram.com",
+        "www.netflix.com", "netflix.com",
+        "www.bankofamerica.com", "bankofamerica.com",
+        "www.chase.com", "chase.com",
+        "www.wellsfargo.com", "wellsfargo.com",
+        "www.paypal.com", "paypal.com",
+        "www.ebay.com", "ebay.com"
     ]
 
     try:
-        parsed_url = urlparse(user_input_url)
-        domain_to_check = parsed_url.netloc.lower()
+        # Step 2: Perform whitelist check on the ACTUAL URL FOR ANALYSIS
+        parsed_url_for_analysis = urlparse(actual_url_for_analysis)
+        domain_to_check = parsed_url_for_analysis.netloc.lower()
 
         if domain_to_check.startswith("www."):
             domain_to_check = domain_to_check[4:]
@@ -147,17 +186,29 @@ def analyze():
                                    result="✅ Safe (Whitelisted Domain)",
                                    description="This URL is from a highly trusted source.",
                                    reasons="• Domain is on a trusted whitelist<br>• No major phishing indicators found",
-                                   url=user_input_url)
+                                   original_input_url=user_input_url, # Correctly pass original input
+                                   final_display_url=final_display_url) # Correctly pass unshortened URL
     except Exception as e:
-        print(f"Error during whitelist check for {user_input_url}: {e}")
+        print(f"ERROR: Error during whitelist check for {actual_url_for_analysis}: {e}")
         traceback.print_exc()
         pass
 
     try:
-        features_df, _ = extract_features(user_input_url)
+        # Step 3: Extract features from the ACTUAL URL FOR ANALYSIS
+        features_df, _ = extract_features(actual_url_for_analysis)
 
         if features_df.empty:
             raise ValueError("Feature extraction returned an empty DataFrame.")
+
+        # Ensure 'is_shortened' feature reflects if the ORIGINAL input was shortened
+        parsed_original_input_url = urlparse(user_input_url)
+        is_original_input_shortened = any(shortener in parsed_original_input_url.netloc.lower() for shortener in [
+            'bit.ly', 'goo.gl', 'tinyurl.com', 'ow.ly', 't.co', 'shorte.st',
+            'cutt.ly', 'is.gd', 'rebrand.ly', 'clck.ru', 'rb.gy'
+        ])
+        if 'is_shortened' in features_df.columns:
+            features_df['is_shortened'] = 1 if is_original_input_shortened else 0
+
 
         try:
             expected_features = scaler.feature_names_in_
@@ -172,7 +223,7 @@ def analyze():
         probs = model.predict_proba(scaled_features)[0]
 
         # CORE FIX: Interpret Class 0 as Phishing, Class 1 as Safe
-        is_phishing = (probs[0] > PHISHING_THRESHOLD) # True if phishing (Class 0 prob > threshold)
+        is_phishing = (probs[0] > PHISHING_THRESHOLD)
 
         if is_phishing:
             confidence = round(probs[0] * 100, 2)
@@ -187,11 +238,9 @@ def analyze():
         print(f"Calculated Confidence: {confidence}%")
         print("---------------------------------------------------\n")
 
-        display_url = unshorten_url(user_input_url)
-
         reasons_list = []
 
-        if is_phishing:  # If the model determined it's phishing (i.e., Class 0)
+        if is_phishing:
             result = f"🚨 Likely Phishing ({confidence}% confidence)"
             description = "⚠️ This URL seems suspicious. Be careful before opening it!"
 
@@ -206,13 +255,13 @@ def analyze():
             if features_df_reindexed['has_at_symbol'].iloc[0] == 1:
                 reasons_list.append("Presence of '@' symbol (often used to obscure true URL)")
             if features_df_reindexed['is_shortened'].iloc[0] == 1:
-                reasons_list.append("Uses a URL shortening service")
+                reasons_list.append("Uses a URL shortening service (original input was shortened)")
             if features_df_reindexed['has_https'].iloc[0] == 0:
                 reasons_list.append("Lacks HTTPS (common for phishing on sensitive sites)")
             if features_df_reindexed['punycode_encoded'].iloc[0] == 1:
                 reasons_list.append("Punycode encoded (often used for homograph attacks)")
             if features_df_reindexed['url_length'].iloc[0] > 75:
-                reasons_list.append("URL is unusually long")
+                reasons_list.append("URL is unusually long (after unshortening if applicable)")
             if features_df_reindexed['num_dots'].iloc[0] > 4:
                 reasons_list.append("Unusual number of dots in URL (can indicate deception)")
             if features_df_reindexed['num_subdomains'].iloc[0] > 2:
@@ -229,7 +278,7 @@ def analyze():
 
             reasons = "<br>".join([f"• {r}" for r in reasons_list])
 
-        else:  # If the model determined it's safe (i.e., Class 1)
+        else:
             result = f"✅ Safe ({confidence}% confidence)"
             description = "This URL looks clean and safe to access."
             reasons = """
@@ -242,16 +291,18 @@ def analyze():
                                result=result,
                                description=description,
                                reasons=reasons,
-                               url=display_url)
+                               original_input_url=user_input_url, # Correctly pass original input
+                               final_display_url=final_display_url) # Correctly pass unshortened/resolved URL
 
     except Exception as e:
-        print(f"Error during analysis: {e}")
+        print(f"ERROR: Error during analysis: {e}")
         traceback.print_exc()
         return render_template("index.html",
                                result="❌ Error Occurred",
                                description=f"An error occurred while analyzing the URL: {e}. Please check server logs for details.",
                                reasons="Check the URL format or try again later.",
-                               url=user_input_url)
+                               original_input_url=user_input_url, # Retain original input on error
+                               final_display_url="") # Clear unshortened on error
 
 
 if __name__ == "__main__":

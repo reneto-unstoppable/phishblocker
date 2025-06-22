@@ -1,63 +1,90 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>PhishBlocker - Real-Time URL Threat Analyzer</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishBlocker: URL Analyzer</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-</head>
-<body>
-    <div class="container {% if result %}demo-{{ 'phishing' if 'phishing' in result|lower else 'safe' }}{% endif %}">
-        <div class="header">
-            <div class="logo">🛡️</div>
-            <h1 class="title">PhishBlocker</h1>
-            <p class="subtitle">Real-Time URL Threat Analyzer</p>
-        </div>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font import for Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden; /* Prevent horizontal scroll due to transform effects */
+        }
 
-        <form class="form-section" method="POST" action="/analyze">
-            <div class="input-group">
-                <input 
-                    type="text" 
-                    name="url"
-                    class="url-input" 
-                    placeholder="Paste suspicious URL here (e.g., https://example.com)"
-                    aria-label="URL to analyze"
-                    required
-                    value="{{ url }}"
-                >
+        /* Keyframes for the fade-in-up animation */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Apply animation to the results section */
+        .animate-fadeInUp {
+            animation: fadeInUp 0.5s ease-out forwards;
+        }
+
+        /* Custom glow effect for focus state */
+        .glow-focus:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5); /* indigo-500 with opacity */
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-950 via-gray-950 to-purple-950 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-gray-800 p-8 rounded-3xl shadow-3xl w-full max-w-lg border border-indigo-700 transform hover:scale-[1.01] transition-transform duration-300">
+        <h1 class="text-5xl font-extrabold text-center text-white mb-8 drop-shadow-lg">
+            <span class="block mb-2 text-indigo-400">PhishBlocker</span>
+            <span class="text-xl font-medium text-gray-300">Real-time Phishing URL Detection</span>
+        </h1>
+
+        <form action="/analyze" method="post" class="mb-8">
+            <div class="mb-6">
+                <label for="url" class="block text-indigo-200 text-lg font-medium mb-2">Enter URL to Analyze:</label>
+                <input type="text" id="url" name="url"
+                       class="w-full px-5 py-3 rounded-xl bg-gray-700 text-white border border-gray-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-75 glow-focus transition-all duration-200 text-base shadow-inner"
+                       placeholder="e.g., https://malicious-site.com/login"
+                       value="{{ original_input_url if original_input_url else '' }}" required>
             </div>
-            <button class="analyze-btn" type="submit">
+            <button type="submit"
+                    class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 px-6 rounded-xl transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-800 text-lg shadow-lg">
                 Analyze URL
             </button>
         </form>
 
         {% if result %}
-        <div class="results-section show">
-            <div class="verdict">
-                <div class="verdict-text verdict-{{ 'phishing' if 'phishing' in result|lower else 'safe' }}">
-                    {{ result }}
+            <div class="mt-8 p-6 rounded-xl shadow-xl animate-fadeInUp
+                        {% if 'Phishing' in result %}bg-gradient-to-br from-red-900 to-red-950 text-red-100 border border-red-700{% else %}bg-gradient-to-br from-green-800 to-green-900 text-green-100 border border-green-700{% endif %}">
+                <h2 class="text-3xl font-bold mb-4 text-center">{{ result }}</h2>
+                <p class="text-lg mb-4 text-center">{{ description }}</p>
+                <div class="text-base leading-relaxed">
+                    <h3 class="font-semibold text-xl mb-2 border-b-2 border-opacity-30 border-current pb-2">Analysis Details:</h3>
+                    <ul class="list-none p-0 m-0 space-y-2">
+                        {% if reasons %}
+                            <li>{{ reasons | safe }}</li>
+                        {% else %}
+                            <li>No specific details available.</li>
+                        {% endif %}
+                    </ul>
                 </div>
-                <div class="verdict-description">
-                    {{ description }}
+                <div class="mt-6 text-sm text-gray-300 border-t-2 border-opacity-30 border-current pt-4">
+                    <p class="font-semibold text-lg text-indigo-200 mb-1">Final Unshortened URL:</p>
+                    <a href="{{ final_display_url }}" target="_blank" rel="noopener noreferrer" class="text-indigo-300 hover:text-indigo-100 break-all underline transition-colors duration-200">
+                        {{ final_display_url if final_display_url else 'N/A' }}
+                    </a>
                 </div>
             </div>
-
-            <div class="reasons">
-                <div class="reasons-title">Analysis Details:</div>
-                <div class="reasons-list">
-                    {{ reasons | safe }}
-                </div>
-            </div>
-
-            <div class="final-url">
-                <strong>Final Unshortened URL:</strong><br>
-                <code style="word-break: break-all;">{{ url }}</code>
-            </div>
-        </div>
         {% endif %}
     </div>
 
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>
