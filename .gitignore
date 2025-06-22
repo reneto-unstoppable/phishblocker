@@ -1,0 +1,41 @@
+﻿# Python generated files
+*.pyc
+__pycache__/
+venv/
+env/
+
+# Distribution / packaging
+.Python
+lib/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# IDE/Editor specific files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+phishblocker.code-workspace
+
+# Logs and temporary files
+*.log
+*.tmp
+train_output_full.txt
+phishing_model.pklym_r7xz8.part
+
+# Machine Learning models and scalers (binary files)
+*.pkl
+
+# Large generated/intermediate data files (CSVs)
+dataset/
+
+# Other large or generated CSVs at root level
+final_combined_training_data.csv
+expanded_training_data.csv
+some_external_urls.csv
+
+# Caching/temporary data directories
+url_cache/

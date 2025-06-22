@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>PhishBlocker - Real-Time URL Threat Analyzer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container {% if result %}demo-{{ 'phishing' if 'phishing' in result|lower else 'safe' }}{% endif %}">
+        <div class="header">
+            <div class="logo">🛡️</div>
+            <h1 class="title">PhishBlocker</h1>
+            <p class="subtitle">Real-Time URL Threat Analyzer</p>
+        </div>
+
+        <form class="form-section" method="POST" action="/analyze">
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    name="url"
+                    class="url-input" 
+                    placeholder="Paste suspicious URL here (e.g., https://example.com)"
+                    aria-label="URL to analyze"
+                    required
+                    value="{{ url }}"
+                >
+            </div>
+            <button class="analyze-btn" type="submit">
+                Analyze URL
+            </button>
+        </form>
+
+        {% if result %}
+        <div class="results-section show">
+            <div class="verdict">
+                <div class="verdict-text verdict-{{ 'phishing' if 'phishing' in result|lower else 'safe' }}">
+                    {{ result }}
+                </div>
+                <div class="verdict-description">
+                    {{ description }}
+                </div>
+            </div>
+
+            <div class="reasons">
+                <div class="reasons-title">Analysis Details:</div>
+                <div class="reasons-list">
+                    {{ reasons | safe }}
+                </div>
+            </div>
+
+            <div class="final-url">
+                <strong>Final Unshortened URL:</strong><br>
+                <code style="word-break: break-all;">{{ url }}</code>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
