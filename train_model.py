@@ -44,9 +44,18 @@ print(df_expanded['label'].value_counts(normalize=True))
 # If 0 in your CSV means Phishing and 1 means Safe, we need to flip them
 # so that for our model and interpretation: 0 = Safe, 1 = Phishing.
 # This operation assumes the original labels are strictly 0 and 1.
-print("\n🔄 Inverting labels (0s become 1s, 1s become 0s) to align with convention (0=Safe, 1=Phishing)...")
+# ONLY perform inversion IF your dataset's '0' is Phishing and '1' is Safe,
+# AND your model expects 0=Safe, 1=Phishing.
+# For consistency with the app.py, where 0 is phishing and 1 is safe,
+# if your raw data has 0=good, 1=phishing, then NO inversion is needed.
+# Let's assume your original data has 0=good, 1=phishing (common).
+# If your data is 0=phishing, 1=good, then uncomment the inversion.
 
-print("📊 Label distribution AFTER inversion:")
+# If you need to invert (e.g., if 0=safe, 1=phishing and your data is the opposite):
+# df_expanded['label'] = 1 - df_expanded['label']
+# print("\n🔄 Inverting labels (0s become 1s, 1s become 0s) to align with convention (0=Safe, 1=Phishing)...")
+
+print("📊 Label distribution AFTER any inversion (or if no inversion needed):")
 print(df_expanded['label'].value_counts().reset_index())
 print(df_expanded['label'].value_counts(normalize=True))
 # --- END CRITICAL FIX ---
@@ -97,7 +106,7 @@ except ValueError as e:
     sys.exit(1)
 
 # --- ⚖️ Balancing training dataset using SMOTE ---
-print("\n⚖️ Balancing training dataset using SMOTE... (will balance based on inverted labels)")
+print("\n⚖️ Balancing training dataset using SMOTE... (will balance based on current labels)")
 print(f"Original training set shape: X_train {X_train.shape}, y_train {y_train.shape}")
 print(f"Original training label distribution: {Counter(y_train)}")
 
@@ -119,7 +128,8 @@ X_test_scaled = scaler.transform(X_test)
 
 # --- 🧠 Train Random Forest Model ---
 print("\n🧠 Training Random Forest model on resampled data...")
-model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+# REDUCED N_ESTIMATORS FOR SMALLER MODEL SIZE
+model = RandomForestClassifier(n_estimators=20, random_state=42, n_jobs=-1) 
 model.fit(X_train_scaled, y_train_resampled)
 
 # --- ✅ Save Model and Scaler ---

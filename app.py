@@ -15,7 +15,7 @@ app = Flask(__name__)
 # 📦 Model info
 MODEL_PATH = "phishing_model.pkl"
 SCALER_PATH = "scaler.pkl"
-MODEL_ID = "1G_wI_-aYjT9bvGYW7WweE7r8raaCSCux"  # Google Drive ID for model
+MODEL_ID = "1G_wI_-aYjT9bvGYW7WweE7r8raaCSCux"  # Google Drive ID for model  
 SCALER_ID = "1LOVJCAdwsVrpRzhNvtjJVOwkP9wHQVj5"  # Google Drive ID for scaler
 
 # ✨ Define the PHISHING_THRESHOLD here
@@ -171,6 +171,7 @@ def analyze():
         "www.wellsfargo.com", "wellsfargo.com",
         "www.paypal.com", "paypal.com",
         "www.ebay.com", "ebay.com"
+        "phishblocker.onrender.com"
     ]
 
     try:
