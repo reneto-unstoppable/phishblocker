@@ -15,7 +15,7 @@ app = Flask(__name__)
 # 📦 Model info
 MODEL_PATH = "phishing_model.pkl"
 SCALER_PATH = "scaler.pkl"
-MODEL_ID = "1G_wI_-aYjT9bvGYW7WweE7r8raaCSCux"  # Google Drive ID for model  
+MODEL_ID = "1G_wI_-aYjT9bvGYW7WweE7r8raaCSCux"  # Google Drive ID for model (UPDATE THIS WITH NEW ID AFTER RETRAINING)
 SCALER_ID = "1LOVJCAdwsVrpRzhNvtjJVOwkP9wHQVj5"  # Google Drive ID for scaler
 
 # ✨ Define the PHISHING_THRESHOLD here
@@ -117,13 +117,12 @@ except Exception as e:
 
 @app.route("/", methods=["GET"])
 def home():
-    # Pass an empty string for both original_input_url and final_display_url on initial load
     return render_template("index.html",
                            result=None,
                            description=None,
                            reasons=None,
-                           original_input_url="", # Now correctly passed
-                           final_display_url="") # Now correctly passed
+                           original_input_url="",
+                           final_display_url="")
 
 
 @app.route("/analyze", methods=["POST"])
@@ -135,14 +134,12 @@ def analyze():
                                result="⚠️ No URL Provided",
                                description="Please enter a URL to analyze.",
                                reasons="",
-                               original_input_url="", # Correctly pass original for empty input
-                               final_display_url="") # Correctly pass empty for empty input
+                               original_input_url="",
+                               final_display_url="")
 
-    # Step 1: Unshorten the URL
     final_display_url = unshorten_url(user_input_url)
     actual_url_for_analysis = final_display_url
 
-    # Extended TRUSTED_DOMAINS list
     TRUSTED_DOMAINS = [
         "www.nasa.gov", "nasa.gov",
         "www.google.com", "google.com",
@@ -162,7 +159,8 @@ def analyze():
         "chatgpt.com",
         "www.facebook.com", "facebook.com",
         "www.twitter.com", "twitter.com", "x.com",
-        "www.youtube.com", "youtube.com",
+        "www.youtube.com", "youtube.com", # Added youtube.com to whitelist
+        "youtu.be", # Added youtu.be to whitelist for YouTube short links
         "www.reddit.com", "reddit.com",
         "www.instagram.com", "instagram.com",
         "www.netflix.com", "netflix.com",
@@ -170,12 +168,13 @@ def analyze():
         "www.chase.com", "chase.com",
         "www.wellsfargo.com", "wellsfargo.com",
         "www.paypal.com", "paypal.com",
-        "www.ebay.com", "ebay.com"
+        "www.ebay.com", "ebay.com",
+        "www.spotify.com", "spotify.com",
         "phishblocker.onrender.com"
+        "www.flipkart.com", "flipkart.com"
     ]
 
     try:
-        # Step 2: Perform whitelist check on the ACTUAL URL FOR ANALYSIS
         parsed_url_for_analysis = urlparse(actual_url_for_analysis)
         domain_to_check = parsed_url_for_analysis.netloc.lower()
 
@@ -187,21 +186,19 @@ def analyze():
                                    result="✅ Safe (Whitelisted Domain)",
                                    description="This URL is from a highly trusted source.",
                                    reasons="• Domain is on a trusted whitelist<br>• No major phishing indicators found",
-                                   original_input_url=user_input_url, # Correctly pass original input
-                                   final_display_url=final_display_url) # Correctly pass unshortened URL
+                                   original_input_url=user_input_url,
+                                   final_display_url=final_display_url)
     except Exception as e:
         print(f"ERROR: Error during whitelist check for {actual_url_for_analysis}: {e}")
         traceback.print_exc()
         pass
 
     try:
-        # Step 3: Extract features from the ACTUAL URL FOR ANALYSIS
         features_df, _ = extract_features(actual_url_for_analysis)
 
         if features_df.empty:
             raise ValueError("Feature extraction returned an empty DataFrame.")
 
-        # Ensure 'is_shortened' feature reflects if the ORIGINAL input was shortened
         parsed_original_input_url = urlparse(user_input_url)
         is_original_input_shortened = any(shortener in parsed_original_input_url.netloc.lower() for shortener in [
             'bit.ly', 'goo.gl', 'tinyurl.com', 'ow.ly', 't.co', 'shorte.st',
@@ -223,14 +220,25 @@ def analyze():
 
         probs = model.predict_proba(scaled_features)[0]
 
-        # CORE FIX: Interpret Class 0 as Phishing, Class 1 as Safe
+        # --- CRITICAL FIX START (Corrected Logic) ---
+        # Based on train_model.py, model.classes_ = [0, 1] where 0 is Phishing and 1 is Safe.
+        # So, probs[0] is P(Phishing), and probs[1] is P(Safe).
+
+        # A URL is classified as phishing if its probability of being phishing (probs[0])
+        # exceeds the PHISHING_THRESHOLD.
         is_phishing = (probs[0] > PHISHING_THRESHOLD)
 
         if is_phishing:
+            # If classified as phishing, confidence is based on the phishing probability (probs[0])
             confidence = round(probs[0] * 100, 2)
+            result = f"🚨 Likely Phishing ({confidence}% confidence)"
+            description = "⚠️ This URL seems suspicious. Be careful before opening it!"
         else:
+            # If classified as safe, confidence is based on the safe probability (probs[1])
             confidence = round(probs[1] * 100, 2)
-
+            result = f"✅ Safe ({confidence}% confidence)"
+            description = "This URL looks clean and safe to access."
+        # --- CRITICAL FIX END ---
 
         print(f"\n--- Model Prediction Details for {user_input_url} ---")
         print(f"Raw Probabilities (Class 0: {model.classes_[0]}, Class 1: {model.classes_[1]}): {probs}")
@@ -240,11 +248,7 @@ def analyze():
         print("---------------------------------------------------\n")
 
         reasons_list = []
-
         if is_phishing:
-            result = f"🚨 Likely Phishing ({confidence}% confidence)"
-            description = "⚠️ This URL seems suspicious. Be careful before opening it!"
-
             reasons_list.append("Detected by trained ML model")
 
             if features_df_reindexed['has_suspicious_words'].iloc[0] == 1:
@@ -279,9 +283,7 @@ def analyze():
 
             reasons = "<br>".join([f"• {r}" for r in reasons_list])
 
-        else:
-            result = f"✅ Safe ({confidence}% confidence)"
-            description = "This URL looks clean and safe to access."
+        else: # If not phishing, default safe reasons
             reasons = """
                 • No major phishing indicators found<br>
                 • Follows common safe URL patterns<br>
@@ -292,8 +294,8 @@ def analyze():
                                result=result,
                                description=description,
                                reasons=reasons,
-                               original_input_url=user_input_url, # Correctly pass original input
-                               final_display_url=final_display_url) # Correctly pass unshortened/resolved URL
+                               original_input_url=user_input_url,
+                               final_display_url=final_display_url)
 
     except Exception as e:
         print(f"ERROR: Error during analysis: {e}")
@@ -302,9 +304,9 @@ def analyze():
                                result="❌ Error Occurred",
                                description=f"An error occurred while analyzing the URL: {e}. Please check server logs for details.",
                                reasons="Check the URL format or try again later.",
-                               original_input_url=user_input_url, # Retain original input on error
-                               final_display_url="") # Clear unshortened on error
+                               original_input_url=user_input_url,
+                               final_display_url="")
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='0.0.0.0', debug=True) # Ensure host is 0.0.0.0 for external access
